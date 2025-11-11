@@ -1,0 +1,73 @@
+name: Docker
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # This is used to complete the identity challenge
+      # with sigstore/fulcio when running outside of PRs.
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log into registry ghcr.io
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Options
+        id: options
+        shell: bash
+        run: |-
+          VERSION=$(\
+              docker buildx bake --list type=variables,format=json --progress=quiet \
+                  | jq --raw-output '.[] | select(.name == "VERSION") | .value' \
+          )
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+      - name: Build Metadata
+        uses: docker/metadata-action@318604b99e75e41977312d83839a89be02ca4893 # v5.9.0
+        id: meta
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+        with:
+          flavor: latest=false
+          images: |
+            ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ steps.options.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.options.outputs.version }}
+            type=semver,pattern={{major}},value=${{ steps.options.outputs.version }}
+            type=raw,value=rolling
+      - name: Build App
+        uses: docker/bake-action@3acf805d94d93a86cce4ca44798a76464a75b88c # v6.9.0
+        id: bake
+        with:
+          files: |
+            ./docker-bake.hcl
+            cwd://${{ steps.meta.outputs.bake-file }}
+          set: |
+            *.args.VENDOR=${{ github.repository_owner }}
+            *.cache-from=${{ format('type=registry,ref=ghcr.io/{0}/build_cache,mode=max', github.repository) }}
+            *.cache-to=${{ inputs.release && format('type=registry,ref=ghcr.io/{0}/build_cache,mode=max,compression=zstd,force-compression=true', github.repository) || '' }}
+            *.labels.org.opencontainers.image.title=${{ github.repository }}
+            *.labels.org.opencontainers.image.url=https://ghcr.io/${{ github.repository }}
+            *.labels.org.opencontainers.image.version=${{ steps.options.outputs.version }}
+            *.labels.org.opencontainers.image.revision=${{ github.sha }}
+            *.labels.org.opencontainers.image.vendor=${{ github.repository_owner }}
+            *.output=type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true,compression=zstd,force-compression=true
+            *.platform=${{ matrix.platform }}
+            *.tags=
+          source: .
+          targets: image
+          push: ${{ github.event_name != 'pull_request' }}
