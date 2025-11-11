@@ -65,5 +65,5 @@ jobs:
             *.labels.org.opencontainers.image.version=${{ steps.options.outputs.version }}
             *.labels.org.opencontainers.image.revision=${{ github.sha }}
             *.labels.org.opencontainers.image.vendor=${{ github.repository_owner }}
-          targets: image-local
+          targets: image
           push: ${{ github.event_name != 'pull_request' }}
