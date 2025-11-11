@@ -65,8 +65,5 @@ jobs:
             *.labels.org.opencontainers.image.version=${{ steps.options.outputs.version }}
             *.labels.org.opencontainers.image.revision=${{ github.sha }}
             *.labels.org.opencontainers.image.vendor=${{ github.repository_owner }}
-            *.output=type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true,compression=zstd,force-compression=true
-            *.platform=${{ matrix.platform }}
-          source: .
-          targets: image
+          targets: image-local
           push: ${{ github.event_name != 'pull_request' }}
